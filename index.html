@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ruta Eléctrica Colombia</title>
+  <meta name="description" content="Planea viajes en carro eléctrico por Colombia: paradas de carga según tu vehículo, tiempos y costos.">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">⚡</span>
+      <div>
+        <h1>Ruta Eléctrica</h1>
+        <p>Planea tu viaje en carro eléctrico por Colombia</p>
+      </div>
+    </div>
+    <button id="toggle-panel" class="btn ghost only-mobile" type="button">Ver mapa</button>
+  </header>
+
+  <main class="layout">
+    <aside class="panel" id="panel">
+      <form id="trip-form" autocomplete="off">
+
+        <!-- 1. Vehículo -->
+        <section class="card">
+          <h2><span class="step">1</span> Tu vehículo</h2>
+          <label class="field">
+            <span>Modelo</span>
+            <select id="car-select"></select>
+          </label>
+          <div class="grid2">
+            <label class="field"><span>Batería útil (kWh)</span><input id="car-battery" type="number" min="5" max="250" step="0.1" required></label>
+            <label class="field"><span>Consumo (kWh/100 km)</span><input id="car-consumption" type="number" min="5" max="60" step="0.1" required></label>
+            <label class="field"><span>Carga AC máx. (kW)</span><input id="car-ac" type="number" min="0" max="50" step="0.1" required></label>
+            <label class="field"><span>Carga DC máx. (kW)</span><input id="car-dc" type="number" min="0" max="400" step="1" required></label>
+          </div>
+          <fieldset class="field">
+            <legend>Conectores que acepta tu carro</legend>
+            <div id="car-connectors" class="chips"></div>
+          </fieldset>
+          <p class="hint" id="car-range"></p>
+        </section>
+
+        <!-- 2. Viaje -->
+        <section class="card">
+          <h2><span class="step">2</span> Tu viaje</h2>
+          <div class="place">
+            <label class="field"><span>Origen</span>
+              <input id="origin" list="places" placeholder="Ej. Bogotá o una dirección" required>
+            </label>
+            <button type="button" class="btn icon pick" data-pick="origin" title="Elegir en el mapa">📍</button>
+          </div>
+          <div class="place" id="via-row" hidden>
+            <label class="field"><span>Pasar por (opcional)</span>
+              <input id="via" list="places" placeholder="Ej. Bucaramanga">
+            </label>
+            <button type="button" class="btn icon pick" data-pick="via" title="Elegir en el mapa">📍</button>
+          </div>
+          <div class="place">
+            <label class="field"><span>Destino</span>
+              <input id="dest" list="places" placeholder="Ej. Barranquilla" required>
+            </label>
+            <button type="button" class="btn icon pick" data-pick="dest" title="Elegir en el mapa">📍</button>
+          </div>
+          <div class="row-actions">
+            <button type="button" class="btn link" id="add-via">+ Agregar parada intermedia</button>
+            <button type="button" class="btn link" id="swap">⇅ Invertir</button>
+          </div>
+          <datalist id="places"></datalist>
+          <div class="grid2">
+            <label class="field"><span>Salida</span><input id="depart" type="datetime-local"></label>
+            <label class="field"><span>Batería al salir: <b id="start-soc-val">100%</b></span>
+              <input id="start-soc" type="range" min="10" max="100" step="5" value="100">
+            </label>
+          </div>
+        </section>
+
+        <!-- 3. Preferencias -->
+        <details class="card">
+          <summary><h2><span class="step">3</span> Preferencias de carga</h2></summary>
+          <div class="grid2">
+            <label class="field"><span>Llegar a cada cargador con mín.: <b id="min-stop-val">10%</b></span>
+              <input id="min-stop" type="range" min="5" max="40" step="5" value="10"></label>
+            <label class="field"><span>Llegar al destino con mín.: <b id="min-arrive-val">15%</b></span>
+              <input id="min-arrive" type="range" min="5" max="60" step="5" value="15"></label>
+            <label class="field"><span>Cargar como máximo hasta: <b id="max-charge-val">80%</b></span>
+              <input id="max-charge" type="range" min="50" max="100" step="5" value="80"></label>
+            <label class="field"><span>Desvío máximo de la vía: <b id="detour-val">5 km</b></span>
+              <input id="detour" type="range" min="1" max="20" step="1" value="5"></label>
+          </div>
+          <label class="field"><span>Condiciones de manejo</span>
+            <select id="conditions">
+              <option value="1.0">Plano, velocidad moderada (×1,00)</option>
+              <option value="1.15" selected>Carretera colombiana típica: montaña y adelantos (×1,15)</option>
+              <option value="1.3">Mucha montaña, aire acondicionado o carro cargado (×1,30)</option>
+              <option value="1.45">Condiciones difíciles: lluvia, alta velocidad (×1,45)</option>
+            </select>
+          </label>
+          <div class="grid2">
+            <label class="field"><span>Potencia mínima del cargador</span>
+              <select id="min-power">
+                <option value="0">Cualquiera</option>
+                <option value="7">≥ 7 kW</option>
+                <option value="22">≥ 22 kW</option>
+                <option value="40">Solo carga rápida (≥ 40 kW)</option>
+              </select></label>
+            <label class="field"><span>Tiempo extra por parada (min)</span><input id="overhead" type="number" min="0" max="60" value="5"></label>
+            <label class="field"><span>Precio kWh carga rápida (COP)</span><input id="price-dc" type="number" min="0" step="50" value="1800"></label>
+            <label class="field"><span>Precio kWh carga lenta (COP)</span><input id="price-ac" type="number" min="0" step="50" value="1000"></label>
+          </div>
+          <label class="check"><input type="checkbox" id="include-ac" checked> Usar cargadores lentos (AC) si hace falta</label>
+          <label class="check"><input type="checkbox" id="include-unknown" checked> Incluir estaciones sin datos de conector (se asume carga lenta de 7 kW)</label>
+        </details>
+
+        <!-- 4. Fuentes -->
+        <details class="card">
+          <summary><h2><span class="step">4</span> Fuentes de cargadores</h2></summary>
+          <p class="hint">Se usan los cargadores de <b>OpenStreetMap</b> automáticamente. Para tener muchos más datos,
+            crea una clave gratis en <a href="https://openchargemap.org/site/develop/api" target="_blank" rel="noopener">Open Charge Map</a> y pégala aquí.</p>
+          <label class="field"><span>Clave API de Open Charge Map (opcional)</span>
+            <input id="ocm-key" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></label>
+          <p class="hint" id="source-status">Aún no se han cargado los datos.</p>
+          <div class="row-actions">
+            <button type="button" class="btn small" id="add-charger">+ Agregar un cargador que conozco</button>
+            <button type="button" class="btn small ghost" id="reload-chargers">↻ Actualizar datos</button>
+          </div>
+          <ul id="custom-list" class="mini-list"></ul>
+        </details>
+
+        <button type="submit" class="btn primary big" id="plan-btn">Planear viaje</button>
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+      </form>
+
+      <!-- Resultados -->
+      <section id="results" hidden>
+        <div id="route-tabs" class="tabs" role="tablist"></div>
+        <div id="summary" class="summary"></div>
+        <div id="warnings"></div>
+        <div class="card chart-card">
+          <h3>Batería durante el viaje</h3>
+          <div id="soc-chart"></div>
+        </div>
+        <ol id="itinerary" class="timeline"></ol>
+        <div class="row-actions wrap">
+          <a class="btn" id="gmaps-link" target="_blank" rel="noopener">Abrir en Google Maps</a>
+          <button type="button" class="btn ghost" id="save-trip">Guardar viaje</button>
+          <button type="button" class="btn ghost" id="print-trip">Imprimir</button>
+        </div>
+      </section>
+
+      <section class="card" id="saved-card" hidden>
+        <h3>Viajes guardados</h3>
+        <ul id="saved-list" class="mini-list"></ul>
+      </section>
+
+      <footer class="foot">
+        <p>Los datos de cargadores provienen de fuentes abiertas y pueden estar desactualizados. Confirma
+          la disponibilidad en la app del operador (Terpel Voltex, Enel X, Celsia, EPM…) antes de salir.
+          Mapas © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>,
+          rutas <a href="https://project-osrm.org" target="_blank" rel="noopener">OSRM</a>.</p>
+      </footer>
+    </aside>
+
+    <section class="map-wrap">
+      <div id="map"></div>
+      <div class="map-legend">
+        <span><i class="dot stop"></i> Parada planeada</span>
+        <span><i class="dot ok"></i> Compatible</span>
+        <span><i class="dot no"></i> No compatible / lejos</span>
+        <label class="check"><input type="checkbox" id="show-all"> Ver todos los cargadores del país</label>
+      </div>
+      <div id="pick-banner" class="pick-banner" hidden>
+        <span id="pick-text">Haz clic en el mapa</span>
+        <button type="button" class="btn small ghost" id="pick-cancel">Cancelar</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Formulario de cargador propio -->
+  <dialog id="charger-dialog">
+    <form method="dialog" id="charger-form">
+      <h3>Agregar cargador</h3>
+      <p class="hint" id="charger-coords"></p>
+      <label class="field"><span>Nombre</span><input id="cf-name" required placeholder="Ej. Hotel El Lago - Aguachica"></label>
+      <div class="grid2">
+        <label class="field"><span>Potencia (kW)</span><input id="cf-kw" type="number" min="1" max="400" step="0.1" value="22" required></label>
+        <label class="field"><span>Operador (opcional)</span><input id="cf-op"></label>
+      </div>
+      <fieldset class="field"><legend>Conectores</legend><div id="cf-connectors" class="chips"></div></fieldset>
+      <div class="row-actions end">
+        <button type="button" class="btn ghost" id="cf-cancel">Cancelar</button>
+        <button type="submit" class="btn primary" value="ok">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/planner.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/osm-snapshot.js"></script>
+  <script src="js/services.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
