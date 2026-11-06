@@ -12,6 +12,9 @@
     pickMode: null, pendingCharger: null
   };
 
+  const isMobile = () => window.matchMedia('(max-width: 860px)').matches;
+  const ic = (name, cls) => '<svg class="ic' + (cls ? ' ' + cls : '') + '" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
+
   // ---------- Formato ----------
   const cop = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
   const num = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 });
@@ -40,10 +43,12 @@
   }
 
   // ---------- Mapa ----------
-  const map = L.map('map', { zoomControl: true }).setView([6.5, -74.5], 6);
+  const map = L.map('map', { zoomControl: false }).setView([6.5, -72.5], 6);
+  L.control.zoom({ position: 'topright' }).addTo(map);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
   }).addTo(map);
+
   const layers = {
     alt: L.layerGroup().addTo(map),
     route: L.layerGroup().addTo(map),
@@ -55,10 +60,23 @@
   const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
   function endIcon(letter) {
-    return L.divIcon({ className: '', html: '<div class="end-marker"><span>' + letter + '</span></div>', iconSize: [30, 30], iconAnchor: [15, 30] });
+    return L.divIcon({ className: '', html: '<div class="end-marker"><span>' + letter + '</span></div>', iconSize: [32, 32], iconAnchor: [16, 36] });
   }
   function stopIcon(n) {
-    return L.divIcon({ className: '', html: '<div class="stop-marker">' + n + '</div>', iconSize: [28, 28], iconAnchor: [14, 14] });
+    return L.divIcon({ className: '', html: '<div class="stop-marker">' + n + '</div>', iconSize: [32, 32], iconAnchor: [16, 16] });
+  }
+
+  // ---------- Vistas ----------
+  function setMapShown(on) {
+    document.body.classList.toggle('show-map', on);
+    $('toggle-panel').innerHTML = on ? ic('list') + ' <span>Ver detalles</span>' : ic('map') + ' <span>Ver mapa</span>';
+  }
+  function showResultsView(on) {
+    $('trip-form').hidden = on;
+    $('results').hidden = !on;
+    document.body.classList.toggle('has-result', on);
+    $('panel-scroll').scrollTop = 0;
+    setStatus('');
   }
 
   // ---------- Vehículo ----------
@@ -125,14 +143,21 @@
     };
   }
 
+  function carStat(value, label) {
+    return '<div class="car-stat"><b>' + value + '</b><small>' + label + '</small></div>';
+  }
+
   function updateRange() {
     const car = readCar(), o = readOpts();
-    if (!car.battery || !car.consumption) { $('car-range').textContent = ''; return; }
+    if (!car.battery || !car.consumption) { $('car-range').innerHTML = ''; return; }
     const perKm = car.consumption * o.consumptionFactor / 100;
     const full = car.battery / perKm;
     const usable = car.battery * (o.maxChargeSoc - o.minStopSoc) / 100 / perKm;
-    $('car-range').innerHTML = 'Autonomía estimada en carretera: <b>' + fmtKm(full) + '</b> con 100 %. ' +
-      'Entre cargas (' + o.minStopSoc + ' % → ' + o.maxChargeSoc + ' %): <b>' + fmtKm(usable) + '</b>.';
+    const dcConn = car.connectors.filter(t => C[t].current === 'DC').map(t => C[t].label.split(' ')[0]).join(', ');
+    $('car-range').innerHTML =
+      carStat(fmtKm(full), 'autonomía en carretera') +
+      carStat(fmtKm(usable), 'entre cargas (' + o.minStopSoc + '–' + o.maxChargeSoc + ' %)') +
+      carStat(num.format(car.dcKw) + ' kW', 'carga rápida' + (dcConn ? ' ' + esc(dcConn) : ''));
   }
 
   // ---------- Preferencias guardadas ----------
@@ -157,11 +182,17 @@
       delete $(id).dataset.lat; delete $(id).dataset.lon;
       if (f[id + '@']) { $(id).dataset.lat = f[id + '@'][0]; $(id).dataset.lon = f[id + '@'][1]; }
     }
-    if (f.via) $('via-row').hidden = false;
+    setViaVisible(!!f.via);
     renderConnectorChips('car-connectors', 'car-conn', f.connectors || []);
     syncLabels();
   }
   function savePrefs() { Services.store('ev.prefs', collectForm()); }
+
+  function setViaVisible(on) {
+    $('via-row').hidden = !on;
+    if (!on) { $('via').value = ''; delete $('via').dataset.lat; delete $('via').dataset.lon; }
+    $('add-via').innerHTML = on ? ic('minus') + ' <span>Quitar la parada</span>' : ic('plus') + ' <span>Agregar una parada</span>';
+  }
 
   function syncLabels() {
     $('start-soc-val').textContent = $('start-soc').value + '%';
@@ -169,14 +200,22 @@
     $('min-arrive-val').textContent = $('min-arrive').value + '%';
     $('max-charge-val').textContent = $('max-charge').value + '%';
     $('detour-val').textContent = $('detour').value + ' km';
+    document.querySelectorAll('input[type=range]').forEach(r => {
+      r.style.setProperty('--fill', ((r.value - r.min) / (r.max - r.min) * 100) + '%');
+    });
     updateRange();
   }
 
   // ---------- Estado ----------
   function setStatus(msg, kind) {
-    const el = $('status');
-    el.className = 'status' + (kind ? ' ' + kind : '');
+    const el = $('results').hidden ? $('status') : $('result-status');
+    for (const s of [$('status'), $('result-status')]) { s.className = 'status'; s.textContent = ''; }
+    if (kind) el.classList.add(kind);
     el.innerHTML = kind === 'busy' ? '<span class="spinner"></span>' + esc(msg) : esc(msg);
+  }
+  function setPlanBusy(on) {
+    $('plan-btn').disabled = on;
+    $('plan-btn').innerHTML = on ? '<span class="spinner"></span> <span>Planeando…</span>' : ic('bolt', 'filled') + ' <span>Planear mi viaje</span>';
   }
 
   // ---------- Cargadores ----------
@@ -194,7 +233,7 @@
     const c = res.counts;
     $('source-status').innerHTML = '<b>' + num.format(state.chargers.length) + '</b> estaciones públicas en Colombia: ' +
       num.format(c.osm) + ' de OpenStreetMap' + (c.ocm ? ', ' + num.format(c.ocm) + ' de Open Charge Map' : '') +
-      (c.custom ? ', ' + c.custom + ' propias' : '') + '.' +
+      (c.custom ? ', ' + c.custom + ' tuyas' : '') + '.' +
       (state.chargerWarn.length ? '<br><span style="color:var(--warn)">' + esc(state.chargerWarn.join(' · ')) + '</span>' : '');
     if ($('show-all').checked) drawAllChargers();
     return state.chargers;
@@ -202,7 +241,7 @@
 
   function renderCustomList() {
     const list = customChargers();
-    $('custom-list').innerHTML = list.map(c => '<li><span>⚡ ' + esc(c.name) + ' <small>(' + c.connectors.map(connLabel).join(', ') + ')</small></span>' +
+    $('custom-list').innerHTML = list.map(c => '<li><span>' + esc(c.name) + ' <small>(' + c.connectors.map(connLabel).join(', ') + ')</small></span>' +
       '<button type="button" class="btn small ghost" data-del="' + esc(c.id) + '">Eliminar</button></li>').join('');
   }
 
@@ -214,7 +253,7 @@
       est = '<div>Tu carro: <b>' + C[conn.type].label + '</b> a ~' + num1.format(conn.effKw) + ' kW' +
         (conn.assumed ? ' (supuesto)' : '') + '<br>20 % → 80 %: <b>' + fmtMin(Planner.chargeMinutes(curve, 20, 80)) + '</b></div>';
     } else {
-      est = '<div style="color:#b3261e"><b>No compatible</b> con los conectores de tu carro.</div>';
+      est = '<div class="no-fit">No compatible con los conectores de tu carro.</div>';
     }
     return '<h4>' + esc(ch.name) + '</h4>' +
       '<div class="meta">' + esc([ch.operator, ch.address].filter(Boolean).join(' · ')) + '</div>' +
@@ -235,7 +274,7 @@
     for (const ch of state.chargers) {
       const ok = !!Planner.bestConnector(ch, car, opts);
       L.circleMarker([ch.lat, ch.lon], {
-        radius: 5, weight: 1, color: '#fff', fillOpacity: .85,
+        radius: 5, weight: 1.5, color: '#fff', fillOpacity: .9,
         fillColor: ok ? cssVar('--accent') : cssVar('--no')
       }).bindPopup(() => chargerPopup(ch, car)).addTo(layers.all);
     }
@@ -246,49 +285,49 @@
     const el = $(id);
     const text = el.value.trim();
     if (!text) return null;
-    if (el.dataset.lat) return { name: text.replace(/^📍\s*/, 'Punto '), lat: +el.dataset.lat, lon: +el.dataset.lon };
+    if (el.dataset.lat) {
+      const name = /^(📍\s*)?-?\d/.test(text) ? 'Punto en el mapa' : text;
+      return { name, lat: +el.dataset.lat, lon: +el.dataset.lon };
+    }
     return Services.geocode(text);
   }
 
   async function onPlan(e) {
     e.preventDefault();
     const car = readCar(), opts = readOpts();
-    if (!car.connectors.length) { setStatus('Selecciona al menos un conector de tu carro.', 'error'); return; }
+    if (!car.connectors.length) { setStatus('Selecciona al menos un conector en “Ajustar los datos del carro”.', 'error'); return; }
     savePrefs();
-    $('plan-btn').disabled = true;
+    setPlanBusy(true);
     try {
-      setStatus('Buscando lugares…', 'busy');
+      setStatus('Buscando los lugares…', 'busy');
       const origin = await resolvePoint('origin');
       const via = $('via-row').hidden ? null : await resolvePoint('via');
       const dest = await resolvePoint('dest');
       if (!origin || !dest) throw new Error('Escribe el origen y el destino.');
       state.points = { origin, via, dest };
 
-      setStatus('Descargando cargadores…', 'busy');
-      const chargersP = ensureChargers();
-      setStatus('Calculando rutas…', 'busy');
-      const routesP = Services.routes([origin, via, dest].filter(Boolean));
-      const [chargers, routes] = await Promise.all([chargersP, routesP]);
+      setStatus('Calculando rutas y cargadores…', 'busy');
+      const [chargers, routes] = await Promise.all([ensureChargers(), Services.routes([origin, via, dest].filter(Boolean))]);
 
-      setStatus('Buscando las mejores paradas de carga…', 'busy');
+      setStatus('Buscando las mejores paradas…', 'busy');
       await new Promise(r => setTimeout(r, 20));
       state.routes = routes;
       state.results = routes.map(r => Planner.plan(r.index, chargers, car, opts));
       state.departAt = $('depart').value ? new Date($('depart').value) : null;
+      state.carName = car.name;
       // Selecciona la ruta viable más rápida
       let best = 0;
       state.results.forEach((r, i) => {
         const b = state.results[best];
         if (r.feasible && (!b.feasible || r.totals.min < b.totals.min)) best = i;
       });
-      setStatus('');
+      showResultsView(true);
       select(best);
-      if (window.matchMedia('(max-width: 860px)').matches) $('results').scrollIntoView({ behavior: 'smooth' });
     } catch (err) {
       console.error(err);
       setStatus(err.name === 'AbortError' ? 'El servicio tardó demasiado en responder. Intenta de nuevo.' : err.message, 'error');
     } finally {
-      $('plan-btn').disabled = false;
+      setPlanBusy(false);
     }
   }
 
@@ -311,27 +350,31 @@
     }).join('');
   }
 
-  function stat(label, value) { return '<div class="stat"><small>' + label + '</small><b>' + value + '</b></div>'; }
+  function stat(label, value, note) {
+    return '<div class="stat"><small>' + label + '</small><b>' + value + '</b>' + (note ? '<em>' + note + '</em>' : '') + '</div>';
+  }
 
   function renderResult(res, route) {
-    $('results').hidden = false;
     const p = state.points;
-    const warn = [];
+    $('result-title').textContent = p.origin.name + ' → ' + p.dest.name;
+    $('result-car').textContent = state.carName + ' · sales con ' + res.opts.startSoc + ' %';
 
     if (!res.feasible) {
       const f = res.failure;
-      $('summary').innerHTML = stat('Distancia', fmtKm(route.distanceKm)) + stat('Manejo sin paradas', fmtMin(route.durationMin * 1.1)) +
-        stat('Cargadores compatibles', res.candidateCount);
-      $('warnings').innerHTML = '<div class="alert error"><b>Con este carro no se puede completar la ruta con los cargadores conocidos.</b>' +
-        '<br>Llegas como máximo hasta el km ' + num.format(f.reachKm) + ' saliendo de ' + esc(f.lastName) + ' (km ' + num.format(f.lastKm) + '). ' +
+      $('summary').innerHTML = '<div class="hero"><div class="stats">' +
+        stat('Distancia', fmtKm(route.distanceKm)) + stat('Manejando sin parar', fmtMin(route.durationMin * 1.1)) +
+        stat('Cargadores compatibles', res.candidateCount) + stat('Alcanzas hasta', 'km ' + num.format(f.reachKm)) +
+        '</div></div>';
+      $('warnings').innerHTML = '<div class="alert error"><b>' + ic('warn') + '<span>Con este carro no se completa la ruta usando los cargadores conocidos.</span></b>' +
+        '<p style="margin-top:6px">Saliendo de ' + esc(f.lastName) + ' (km ' + num.format(f.lastKm) + ') llegas como máximo al km ' + num.format(f.reachKm) + '. ' +
         (f.nextKm ? 'El siguiente cargador compatible está en el km ' + num.format(f.nextKm) + ' (' + esc(f.nextName) + ').'
-          : 'No hay más cargadores compatibles hasta el destino.') +
-        '<ul>' + (state.counts && state.counts.ocm ? '' : '<li>Agrega una clave de Open Charge Map (paso 4) para tener más estaciones.</li>') +
-        (res.opts.includeUnknown && res.opts.includeAC ? '' : '<li>Activa “Incluir estaciones sin datos de conector” y “Usar cargadores lentos” (paso 3).</li>') +
-        (res.opts.maxChargeSoc < 100 ? '<li>Sube “Cargar como máximo hasta” a 100 % (paso 3).</li>' : '') +
-        '<li>Aumenta el desvío máximo permitido, sal con la batería llena o elige condiciones “Plano” si vas despacio.</li>' +
-        '<li>Si conoces un hotel o finca con cargador en el tramo, agrégalo con “+ Agregar un cargador que conozco”.</li>' +
-        (state.routes.length > 1 ? '<li>Prueba otra de las rutas alternativas de arriba.</li>' : '') + '</ul></div>';
+          : 'No hay más cargadores compatibles hasta el destino.') + '</p>' +
+        '<ul>' + (state.counts && state.counts.ocm ? '' : '<li>Agrega una clave de Open Charge Map (en “Cargadores”) para tener más estaciones.</li>') +
+        (res.opts.includeUnknown && res.opts.includeAC ? '' : '<li>Activa “Incluir estaciones sin datos” y “Usar cargadores lentos” (en “Preferencias de carga”).</li>') +
+        (res.opts.maxChargeSoc < 100 ? '<li>Sube “Cargar como máximo hasta” a 100 % (en “Preferencias de carga”).</li>' : '') +
+        '<li>Permite un desvío mayor o sal con la batería llena.</li>' +
+        '<li>Si conoces un hotel o finca con cargador en ese tramo, agrégalo en “Cargadores”.</li>' +
+        (state.routes.length > 1 ? '<li>Prueba otra de las rutas de arriba.</li>' : '') + '</ul></div>';
       $('soc-chart').innerHTML = '';
       $('soc-chart').parentElement.hidden = true;
       $('itinerary').innerHTML = '';
@@ -341,21 +384,29 @@
     }
 
     const t = res.totals;
-    const eta = state.departAt ? fmtClock(state.departAt, t.min) : '—';
-    $('summary').innerHTML =
-      stat('Distancia', fmtKm(t.km)) + stat('Tiempo total', fmtMin(t.min)) + stat('Llegada', eta) +
-      stat('Manejando', fmtMin(t.driveMin)) + stat('Cargando', fmtMin(t.chargeMin + t.overheadMin)) +
-      stat('Paradas', res.stops.length) +
-      stat('Energía usada', num.format(t.energyUsed) + ' kWh') + stat('Costo carga*', cop.format(t.cost)) +
-      stat('Batería al llegar', Math.round(res.arriveSoc) + ' %');
+    const chargeTotal = t.chargeMin + t.overheadMin;
+    const eta = state.departAt ? '<div class="hero-eta">Llegas <b>' + fmtClock(state.departAt, t.min) + '</b></div>' : '';
+    $('summary').innerHTML = '<div class="hero">' +
+      '<div><small>Tiempo total</small><div class="hero-time">' + fmtMin(t.min) + '</div>' + eta + '</div>' +
+      '<div class="split" role="img" aria-label="Manejando ' + fmtMin(t.driveMin) + ', cargando ' + fmtMin(chargeTotal) + '">' +
+      '<i style="flex:' + t.driveMin.toFixed(1) + '"></i>' + (chargeTotal > 0 ? '<i style="flex:' + chargeTotal.toFixed(1) + '"></i>' : '') + '</div>' +
+      '<div class="split-legend"><span><i class="key drive"></i>Manejando <b>' + fmtMin(t.driveMin) + '</b></span>' +
+      (chargeTotal > 0 ? '<span><i class="key charge"></i>Cargando <b>' + fmtMin(chargeTotal) + '</b></span>' : '') + '</div>' +
+      '<div class="stats">' +
+      stat('Distancia', fmtKm(t.km), 'usa ' + num.format(t.energyUsed) + ' kWh') +
+      stat('Paradas de carga', res.stops.length) +
+      stat('Costo de carga', cop.format(t.cost), 'solo paradas del camino') +
+      stat('Batería al llegar', Math.round(res.arriveSoc) + ' %') +
+      '</div></div>';
 
-    if (res.stops.some(s => s.conn.assumed || s.conn.kwAssumed)) warn.push('Algunas paradas tienen potencia o conectores estimados (marcadas con “sin verificar”). Confírmalas antes de salir.');
-    if (res.stops.some(s => !s.conn.dc)) warn.push('El plan incluye carga lenta (AC). Considera dormir o almorzar en esas paradas.');
-    if (t.driveMin > 8 * 60) warn.push('Son más de 8 horas manejando: planea descansar o dividir el viaje en dos días.');
-    if (!state.counts || !state.counts.ocm) warn.push('Solo se usaron datos de OpenStreetMap. Con una clave de Open Charge Map (paso 4) aparecen más cargadores.');
-    if (state.chargerWarn.length) warn.push(...state.chargerWarn);
-    $('warnings').innerHTML = warn.length ? '<div class="alert warn"><ul>' + warn.map(w => '<li>' + esc(w) + '</li>').join('') + '</ul>' +
-      '<small>*Costo estimado con los precios por kWh de tus preferencias.</small></div>' : '';
+    const notes = [];
+    if (res.stops.some(s => s.conn.assumed || s.conn.kwAssumed)) notes.push('Algunas paradas tienen potencia o conectores estimados (“sin verificar”). Confírmalas antes de salir.');
+    if (res.stops.some(s => !s.conn.dc)) notes.push('El plan incluye carga lenta. Aprovecha esas paradas para dormir o almorzar.');
+    if (t.driveMin > 8 * 60) notes.push('Son más de 8 horas manejando: planea descansar o dividir el viaje en dos días.');
+    if (!state.counts || !state.counts.ocm) notes.push('Solo se usaron datos de OpenStreetMap. Con una clave de Open Charge Map (en “Cargadores”) aparecen más estaciones.');
+    notes.push(...state.chargerWarn);
+    $('warnings').innerHTML = notes.length ? '<details class="notes"><summary>' + ic('warn') + 'Para tener en cuenta (' + notes.length + ')' + ic('chevron', 'chev') +
+      '</summary><ul>' + notes.map(w => '<li>' + esc(w) + '</li>').join('') + '</ul></details>' : '';
 
     $('soc-chart').parentElement.hidden = false;
     renderChart(res);
@@ -373,27 +424,28 @@
     items.push('<li class="endpoint"><span class="bullet">A</span><div class="box"><h4>' + esc(p.origin.name) + '</h4>' +
       '<div class="meta">Salida' + (base ? ' · ' + fmtClock(base, 0) : '') + ' · batería ' + res.opts.startSoc + ' %</div></div></li>');
     res.legs.forEach((lg, k) => {
-      items.push('<li><span class="bullet">🚗</span><div class="drive">Maneja <b>' + fmtKm(lg.km) + '</b> · ' + fmtMin(lg.min) +
-        ' · usas ~' + num.format(lg.energyKwh) + ' kWh · llegas con <b>' + Math.round(lg.arriveSoc) + ' %</b></div></li>');
+      items.push('<li><span class="bullet">' + ic('car') + '</span><div class="drive" title="Usa unos ' + num.format(lg.energyKwh) + ' kWh">' +
+        '<span><b>' + fmtKm(lg.km) + '</b> · ' + fmtMin(lg.min) + '</span><span>llegas con <b>' + Math.round(lg.arriveSoc) + ' %</b></span></div></li>');
       const s = res.stops[k];
       if (!s) return;
       const ch = s.charger;
       const unverified = s.conn.assumed || s.conn.kwAssumed;
+      const place = [ch.operator, ch.address].filter(Boolean).join(' · ');
+      const a = Math.max(0, s.arriveSoc), d = Math.min(100, s.departSoc);
       items.push('<li class="stop"><span class="bullet">' + (k + 1) + '</span><div class="box">' +
-        '<h4>' + esc(ch.name) + '<span class="badge ' + (s.conn.dc ? 'dc' : '') + '">' + (s.conn.dc ? 'Rápida DC' : 'Lenta AC') + '</span>' +
-        (unverified ? '<span class="badge warn">sin verificar</span>' : '') + '</h4>' +
-        '<div class="meta">' + esc([ch.operator, ch.address].filter(Boolean).join(' · ')) + (ch.operator || ch.address ? '<br>' : '') +
-        'Km ' + num.format(s.km) + ' de la ruta' + (s.offKm > 0.3 ? ' · desvío ' + fmtKm(s.offKm) + ' de la vía' : '') +
-        (base ? ' · llegas ' + fmtClock(base, s.arriveAtMin) : '') + '</div>' +
-        '<div class="charge">' +
-        '<span>🔋 <b>' + Math.round(s.arriveSoc) + ' % → ' + Math.round(s.departSoc) + ' %</b></span>' +
-        '<span>⏱ <b>' + fmtMin(s.chargeMin) + '</b> cargando</span>' +
-        '<span>⚡ ' + esc(s.conn.type === 'unknown' ? 'Conector sin datos' : C[s.conn.type].label) + ' · ' + num1.format(s.conn.effKw) + ' kW</span>' +
+        '<h4>' + esc(ch.name) + '</h4>' +
+        '<div class="badges"><span class="badge ' + (s.conn.dc ? 'dc' : '') + '">' + (s.conn.dc ? 'Carga rápida' : 'Carga lenta') + '</span>' +
+        (unverified ? '<span class="badge warn">Sin verificar</span>' : '') + '</div>' +
+        '<div class="meta">' + (place ? esc(place) + ' · ' : '') + 'km ' + num.format(s.km) +
+        (s.offKm > 0.3 ? ' · a ' + fmtKm(s.offKm) + ' de la vía' : '') + '</div>' +
+        '<div class="batt"><div class="batt-top"><b>' + Math.round(a) + ' % → ' + Math.round(d) + ' %</b><b>' + fmtMin(s.chargeMin) + '</b></div>' +
+        '<div class="batt-track" role="img" aria-label="Batería de ' + Math.round(a) + ' a ' + Math.round(d) + ' por ciento">' +
+        '<i class="have" style="width:' + a + '%"></i><i class="add" style="left:' + a + '%;width:' + (d - a) + '%"></i></div></div>' +
+        '<div class="charge-info"><span>' + esc(s.conn.type === 'unknown' ? 'Conector sin datos' : C[s.conn.type].label) + ' · ' + num1.format(s.conn.effKw) + ' kW</span>' +
         '<span>' + num1.format(s.kwh) + ' kWh · ≈ ' + cop.format(s.cost) + '</span>' +
-        '</div>' +
-        '<div class="meta" style="margin-top:6px">' + (base ? 'Sales ' + fmtClock(base, s.departAtMin) + ' · ' : '') +
-        '<a href="' + gmapsDir(ch.lat, ch.lon) + '" target="_blank" rel="noopener">Cómo llegar</a> · ' +
-        '<a href="#" data-focus="' + k + '">Ver en el mapa</a> · ' + esc(ch.source) + '</div>' +
+        (base ? '<span>Llegas ' + fmtClock(base, s.arriveAtMin) + ' · sales ' + fmtClock(base, s.departAtMin) + '</span>' : '') + '</div>' +
+        '<div class="stop-links"><a href="' + gmapsDir(ch.lat, ch.lon) + '" target="_blank" rel="noopener">Cómo llegar</a>' +
+        '<a href="#" data-focus="' + k + '">Ver en el mapa</a><span>' + esc(ch.source) + '</span></div>' +
         '</div></li>');
     });
     items.push('<li class="endpoint"><span class="bullet">B</span><div class="box"><h4>' + esc(p.dest.name) + '</h4>' +
@@ -401,24 +453,56 @@
     $('itinerary').innerHTML = items.join('');
   }
 
+  function socAt(profile, km) {
+    for (let i = 0; i < profile.length - 1; i++) {
+      const a = profile[i], b = profile[i + 1];
+      if (km >= a.km && km <= b.km && b.km > a.km) return a.soc + (b.soc - a.soc) * (km - a.km) / (b.km - a.km);
+    }
+    return profile[profile.length - 1].soc;
+  }
+
   function renderChart(res) {
-    const W = 400, H = 150, pl = 30, pr = 8, pt = 8, pb = 22;
+    const W = 400, H = 160, pl = 42, pr = 10, pt = 22, pb = 22;
     const maxKm = Math.max(1, res.totalKm);
     const x = k => pl + (W - pl - pr) * k / maxKm;
     const y = s => pt + (H - pt - pb) * (1 - s / 100);
     const pts = res.profile.map(p => x(p.km).toFixed(1) + ',' + y(p.soc).toFixed(1));
     const area = 'M' + x(0) + ',' + y(0) + ' L' + pts.join(' L') + ' L' + x(res.profile[res.profile.length - 1].km) + ',' + y(0) + ' Z';
-    const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => {
+    const ticks = [0, 0.5, 1].map(f => {
       const k = maxKm * f;
       return '<text class="lbl" x="' + x(k) + '" y="' + (H - 6) + '" text-anchor="' + (f === 0 ? 'start' : f === 1 ? 'end' : 'middle') + '">' + num.format(k) + ' km</text>';
     }).join('');
-    const yl = [0, 50, 100].map(s => '<text class="lbl" x="' + (pl - 4) + '" y="' + (y(s) + 3) + '" text-anchor="end">' + s + '%</text>' +
+    const yl = [0, 50, 100].map(s => '<text class="lbl" x="' + (pl - 6) + '" y="' + (y(s) + 4) + '" text-anchor="end">' + s + '%</text>' +
       '<line class="axis" x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y(s) + '" y2="' + y(s) + '"/>').join('');
-    const dots = res.stops.map(s => '<circle class="stopdot" r="3.5" cx="' + x(s.km) + '" cy="' + y(s.arriveSoc) + '"/>').join('');
+    const dots = res.stops.map(s => '<circle class="stopdot" r="4" cx="' + x(s.km) + '" cy="' + y(s.arriveSoc) + '"/>').join('');
     $('soc-chart').innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Nivel de batería a lo largo de la ruta">' +
       yl + '<path class="area" d="' + area + '"/>' +
       '<line class="reserve" x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y(res.opts.minStopSoc) + '" y2="' + y(res.opts.minStopSoc) + '"/>' +
-      '<polyline class="line" points="' + pts.join(' ') + '"/>' + dots + ticks + '</svg>';
+      '<polyline class="line" points="' + pts.join(' ') + '"/>' + dots + ticks +
+      '<g class="hover" visibility="hidden"><line class="cross" y1="' + pt + '" y2="' + y(0) + '"/><circle class="crossdot" r="4"/></g></svg>' +
+      '<div class="chart-tip" hidden></div>';
+
+    // Capa de lectura: al pasar el cursor o el dedo muestra km y % de batería
+    const box = $('soc-chart'), svg = box.querySelector('svg'), hover = svg.querySelector('.hover'), tip = box.querySelector('.chart-tip');
+    const move = ev => {
+      const rect = svg.getBoundingClientRect();
+      const sx = (ev.clientX - rect.left) * W / rect.width;
+      const km = Math.max(0, Math.min(maxKm, (sx - pl) / (W - pl - pr) * maxKm));
+      const soc = socAt(res.profile, km);
+      hover.setAttribute('visibility', 'visible');
+      hover.querySelector('.cross').setAttribute('x1', x(km));
+      hover.querySelector('.cross').setAttribute('x2', x(km));
+      hover.querySelector('.crossdot').setAttribute('cx', x(km));
+      hover.querySelector('.crossdot').setAttribute('cy', y(soc));
+      tip.hidden = false;
+      tip.textContent = 'Km ' + num.format(km) + ' · ' + Math.round(soc) + ' %';
+      const half = tip.offsetWidth / 2, px = x(km) * rect.width / W;
+      tip.style.left = Math.max(half, Math.min(rect.width - half, px)) + 'px';
+    };
+    const leave = () => { hover.setAttribute('visibility', 'hidden'); tip.hidden = true; };
+    svg.addEventListener('pointermove', move);
+    svg.addEventListener('pointerdown', move);
+    svg.addEventListener('pointerleave', leave);
   }
 
   function drawMap() {
@@ -427,18 +511,20 @@
     const car = readCar();
     state.routes.forEach((r, i) => {
       if (i === state.selected) return;
-      L.polyline(r.coords.map(c => [c[1], c[0]]), { color: cssVar('--no'), weight: 5, opacity: .6 })
+      L.polyline(r.coords.map(c => [c[1], c[0]]), { color: cssVar('--no'), weight: 5, opacity: .7 })
         .on('click', () => select(i)).bindTooltip('Ruta ' + (i + 1) + ' (clic para ver)', { sticky: true }).addTo(layers.alt);
     });
     const rt = state.routes[state.selected];
-    const line = L.polyline(rt.coords.map(c => [c[1], c[0]]), { color: cssVar('--accent'), weight: 6, opacity: .9 }).addTo(layers.route);
+    const latlngs = rt.coords.map(c => [c[1], c[0]]);
+    L.polyline(latlngs, { color: '#fff', weight: 9, opacity: .85, interactive: false }).addTo(layers.route);
+    const line = L.polyline(latlngs, { color: cssVar('--accent'), weight: 5, opacity: 1 }).addTo(layers.route);
 
     const stopIds = new Set(res.stops.map(s => s.charger.id));
     for (const n of res.nearby) {
       if (stopIds.has(n.charger.id)) continue;
       const ok = n.conn && n.proj.offKm <= res.opts.maxDetourKm && n.conn.effKw >= res.opts.minPowerKw;
       L.circleMarker([n.charger.lat, n.charger.lon], {
-        radius: ok ? 6 : 4.5, weight: 1.5, color: '#fff', fillOpacity: .9,
+        radius: ok ? 6 : 4.5, weight: 2, color: '#fff', fillOpacity: 1,
         fillColor: ok ? cssVar('--accent') : cssVar('--no')
       }).bindPopup(() => chargerPopup(n.charger, car, '<div class="meta">Km ' + num.format(n.proj.km) + ' · a ' + fmtKm(n.proj.offKm) + ' de la vía</div>'))
         .addTo(layers.nearby);
@@ -450,19 +536,20 @@
     L.marker([p.origin.lat, p.origin.lon], { icon: endIcon('A'), zIndexOffset: 1100 }).bindPopup(esc(p.origin.name)).addTo(layers.stops);
     if (p.via) L.marker([p.via.lat, p.via.lon], { icon: endIcon('•'), zIndexOffset: 1100 }).bindPopup(esc(p.via.name)).addTo(layers.stops);
     L.marker([p.dest.lat, p.dest.lon], { icon: endIcon('B'), zIndexOffset: 1100 }).bindPopup(esc(p.dest.name)).addTo(layers.stops);
-    map.fitBounds(line.getBounds(), { padding: [30, 30] });
+    // El panel flotante tapa la izquierda en escritorio: la ruta se encuadra en el espacio libre
+    map.fitBounds(line.getBounds(), isMobile()
+      ? { paddingTopLeft: [30, 50], paddingBottomRight: [30, 130] }
+      : { paddingTopLeft: [480, 50], paddingBottomRight: [50, 80] });
   }
 
   // ---------- Selección en el mapa ----------
   function startPick(mode) {
     state.pickMode = mode;
     document.querySelectorAll('.pick').forEach(b => b.classList.toggle('active', b.dataset.pick === mode));
-    const txt = { origin: 'el origen', dest: 'el destino', via: 'la parada intermedia', charger: 'dónde está el cargador' }[mode];
-    $('pick-text').textContent = 'Haz clic en el mapa para marcar ' + txt;
+    const txt = { origin: 'el origen', dest: 'el destino', via: 'la parada', charger: 'dónde está el cargador' }[mode];
+    $('pick-text').textContent = 'Toca el mapa para marcar ' + txt;
     $('pick-banner').hidden = false;
-    document.body.classList.add('show-map');
-    $('toggle-panel').textContent = 'Ver formulario';
-    setTimeout(() => map.invalidateSize(), 50);
+    setMapShown(true);
   }
   function endPick() {
     state.pickMode = null;
@@ -483,11 +570,11 @@
       return;
     }
     const el = $(mode);
-    el.value = '📍 ' + lat.toFixed(5) + ', ' + lng.toFixed(5);
+    el.value = lat.toFixed(5) + ', ' + lng.toFixed(5);
     el.dataset.lat = lat; el.dataset.lon = lng;
     L.marker([lat, lng], { icon: endIcon(mode === 'origin' ? 'A' : mode === 'dest' ? 'B' : '•') }).addTo(layers.picks);
     savePrefs();
-    if (window.matchMedia('(max-width: 860px)').matches) { document.body.classList.remove('show-map'); $('toggle-panel').textContent = 'Ver mapa'; }
+    setMapShown(false);
   });
 
   // ---------- Viajes guardados ----------
@@ -495,7 +582,7 @@
     const trips = Services.load('ev.trips', []);
     $('saved-card').hidden = !trips.length;
     $('saved-list').innerHTML = trips.map(t => '<li><a href="#" data-load="' + t.id + '">' + esc(t.name) + '</a>' +
-      '<span><small>' + esc(t.summary || '') + '</small> <button type="button" class="btn small ghost" data-trip-del="' + t.id + '">×</button></span></li>').join('');
+      '<span class="trip-info"><small>' + esc(t.summary || '') + '</small><button type="button" class="icon-btn" data-trip-del="' + t.id + '" aria-label="Eliminar viaje">' + ic('x') + '</button></span></li>').join('');
   }
 
   // ---------- Eventos ----------
@@ -540,14 +627,8 @@
     $('trip-form').addEventListener('change', () => { savePrefs(); if ($('show-all').checked) drawAllChargers(); });
     $('trip-form').addEventListener('submit', onPlan);
 
-    $('add-via').addEventListener('click', () => {
-      const row = $('via-row');
-      row.hidden = !row.hidden;
-      if (row.hidden) { $('via').value = ''; delete $('via').dataset.lat; }
-      $('add-via').textContent = row.hidden ? '+ Agregar parada intermedia' : '− Quitar parada intermedia';
-      savePrefs();
-    });
-    if (!$('via-row').hidden) $('add-via').textContent = '− Quitar parada intermedia';
+    $('back-btn').addEventListener('click', () => showResultsView(false));
+    $('add-via').addEventListener('click', () => { setViaVisible($('via-row').hidden); savePrefs(); });
     $('swap').addEventListener('click', () => {
       const a = $('origin'), b = $('dest');
       [a.value, b.value] = [b.value, a.value];
@@ -558,7 +639,7 @@
       savePrefs();
     });
     document.querySelectorAll('.pick').forEach(b => b.addEventListener('click', () => startPick(b.dataset.pick)));
-    $('pick-cancel').addEventListener('click', endPick);
+    $('pick-cancel').addEventListener('click', () => { endPick(); setMapShown(false); });
 
     $('route-tabs').addEventListener('click', e => {
       const t = e.target.closest('[data-tab]');
@@ -569,15 +650,15 @@
       if (!a) return;
       e.preventDefault();
       const m = state.stopMarkers[+a.dataset.focus];
-      document.body.classList.add('show-map');
-      $('toggle-panel').textContent = 'Ver formulario';
-      setTimeout(() => { map.invalidateSize(); map.setView(m.getLatLng(), 15); m.openPopup(); }, 60);
+      setMapShown(true);
+      map.setView(m.getLatLng(), 15);
+      m.openPopup();
     });
 
     $('show-all').addEventListener('change', async e => {
       if (e.target.checked) {
         layers.all.addTo(map);
-        try { setStatus('Descargando cargadores…', 'busy'); await ensureChargers(); setStatus(''); drawAllChargers(); }
+        try { await ensureChargers(); drawAllChargers(); }
         catch (err) { setStatus(err.message, 'error'); }
       } else map.removeLayer(layers.all);
     });
@@ -590,6 +671,7 @@
     // Cargadores propios
     $('add-charger').addEventListener('click', () => startPick('charger'));
     $('cf-cancel').addEventListener('click', () => $('charger-dialog').close());
+    $('charger-dialog').addEventListener('close', () => setMapShown(false));
     $('charger-form').addEventListener('submit', () => {
       const kw = +$('cf-kw').value;
       const types = [...document.querySelectorAll('input[name=cf-conn]:checked')].map(i => i.value);
@@ -638,16 +720,12 @@
       if (l) {
         e.preventDefault();
         const t = trips.find(x => x.id === l.dataset.load);
-        if (t) { applyForm(t.form); $('add-via').textContent = $('via-row').hidden ? '+ Agregar parada intermedia' : '− Quitar parada intermedia'; $('trip-form').requestSubmit(); }
+        if (t) { applyForm(t.form); $('trip-form').requestSubmit(); }
       }
     });
     $('print-trip').addEventListener('click', () => window.print());
 
-    $('toggle-panel').addEventListener('click', () => {
-      const on = document.body.classList.toggle('show-map');
-      $('toggle-panel').textContent = on ? 'Ver formulario' : 'Ver mapa';
-      setTimeout(() => map.invalidateSize(), 50);
-    });
+    $('toggle-panel').addEventListener('click', () => setMapShown(!document.body.classList.contains('show-map')));
   }
 
   init();

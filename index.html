@@ -5,186 +5,244 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Ruta Eléctrica Colombia</title>
   <meta name="description" content="Planea viajes en carro eléctrico por Colombia: paradas de carga según tu vehículo, tiempos y costos.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="logo" aria-hidden="true">⚡</span>
+  <!-- Íconos -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 22s7-6.3 7-12a7 7 0 1 0-14 0c0 5.700 7 12 7 12z"/><circle cx="12" cy="10" r="2.500"/></symbol>
+      <symbol id="i-car" viewBox="0 0 24 24"><path d="M5 11l1.800-4.800A2 2 0 0 1 8.700 5h6.600a2 2 0 0 1 1.900 1.200L19 11"/><path d="M3 15a4 4 0 0 1 2-4h14a4 4 0 0 1 2 4v3H3z"/><path d="M6 18v2M18 18v2M7 14.500h.01M17 14.500h.01"/></symbol>
+      <symbol id="i-battery" viewBox="0 0 24 24"><rect x="2" y="7" width="17" height="10" rx="2.500"/><path d="M22 11v2M6 10.500v3M10 10.500v3"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 4v15M7 19l-3-3M7 19l3-3M17 20V5M17 5l-3 3M17 5l3 3"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+      <symbol id="i-map" viewBox="0 0 24 24"><path d="M9 4 3 6.500v13.500l6-2.500 6 2.500 6-2.500V4l-6 2.500z"/><path d="M9 4v13.500M15 6.500V20"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.500 6h.01M4.500 12h.01M4.500 18h.01"/></symbol>
+      <symbol id="i-save" viewBox="0 0 24 24"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></symbol>
+      <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 8V3h10v5M7 17H4v-6a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v6h-3"/><path d="M7 14h10v7H7z"/></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/></symbol>
+      <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4 2.500 20h19z"/><path d="M12 10v4M12 17h.01"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14-4.500L4 9M4 4v5h5M4 13a8 8 0 0 0 14 4.500L20 15M20 20v-5h-5"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+      <symbol id="i-nav" viewBox="0 0 24 24"><path d="M21 3 3 10.500l7.500 3L13.500 21z"/></symbol>
+    </defs>
+  </svg>
+
+  <!-- Mapa a pantalla completa -->
+  <section class="map-wrap" aria-label="Mapa de la ruta">
+    <div id="map"></div>
+    <div class="map-legend">
+      <span><i class="dot stop"></i> Parada</span>
+      <span><i class="dot ok"></i> Compatible</span>
+      <span><i class="dot no"></i> No compatible o lejos</span>
+      <label class="switch-row"><input type="checkbox" id="show-all" class="switch"> Todos los del país</label>
+    </div>
+    <div id="pick-banner" class="pick-banner" hidden>
+      <svg class="ic"><use href="#i-pin"/></svg>
+      <span id="pick-text">Toca el mapa</span>
+      <button type="button" class="btn small on-dark" id="pick-cancel">Cancelar</button>
+    </div>
+  </section>
+
+  <!-- Panel flotante -->
+  <aside class="panel" id="panel">
+    <header class="brand">
+      <span class="logo" aria-hidden="true"><svg class="ic filled"><use href="#i-bolt"/></svg></span>
       <div>
         <h1>Ruta Eléctrica</h1>
-        <p>Planea tu viaje en carro eléctrico por Colombia</p>
+        <p>Viaja por Colombia sin quedarte sin carga</p>
       </div>
-    </div>
-    <button id="toggle-panel" class="btn ghost only-mobile" type="button">Ver mapa</button>
-  </header>
+    </header>
 
-  <main class="layout">
-    <aside class="panel" id="panel">
+    <div class="panel-scroll" id="panel-scroll">
       <form id="trip-form" autocomplete="off">
-
-        <!-- 1. Vehículo -->
+        <!-- Viaje -->
         <section class="card">
-          <h2><span class="step">1</span> Tu vehículo</h2>
-          <label class="field">
-            <span>Modelo</span>
-            <select id="car-select"></select>
-          </label>
-          <div class="grid2">
-            <label class="field"><span>Batería útil (kWh)</span><input id="car-battery" type="number" min="5" max="250" step="0.1" required></label>
-            <label class="field"><span>Consumo (kWh/100 km)</span><input id="car-consumption" type="number" min="5" max="60" step="0.1" required></label>
-            <label class="field"><span>Carga AC máx. (kW)</span><input id="car-ac" type="number" min="0" max="50" step="0.1" required></label>
-            <label class="field"><span>Carga DC máx. (kW)</span><input id="car-dc" type="number" min="0" max="400" step="1" required></label>
-          </div>
-          <fieldset class="field">
-            <legend>Conectores que acepta tu carro</legend>
-            <div id="car-connectors" class="chips"></div>
-          </fieldset>
-          <p class="hint" id="car-range"></p>
-        </section>
-
-        <!-- 2. Viaje -->
-        <section class="card">
-          <h2><span class="step">2</span> Tu viaje</h2>
-          <div class="place">
-            <label class="field"><span>Origen</span>
-              <input id="origin" list="places" placeholder="Ej. Bogotá o una dirección" required>
-            </label>
-            <button type="button" class="btn icon pick" data-pick="origin" title="Elegir en el mapa">📍</button>
-          </div>
-          <div class="place" id="via-row" hidden>
-            <label class="field"><span>Pasar por (opcional)</span>
-              <input id="via" list="places" placeholder="Ej. Bucaramanga">
-            </label>
-            <button type="button" class="btn icon pick" data-pick="via" title="Elegir en el mapa">📍</button>
-          </div>
-          <div class="place">
-            <label class="field"><span>Destino</span>
-              <input id="dest" list="places" placeholder="Ej. Barranquilla" required>
-            </label>
-            <button type="button" class="btn icon pick" data-pick="dest" title="Elegir en el mapa">📍</button>
+          <h2>¿A dónde vas?</h2>
+          <div class="route-box">
+            <div class="route-row">
+              <span class="route-mark start" aria-hidden="true"></span>
+              <label class="route-field"><small>Desde</small>
+                <input id="origin" list="places" placeholder="Ciudad o dirección" required>
+              </label>
+              <button type="button" class="icon-btn pick" data-pick="origin" title="Marcar el origen en el mapa" aria-label="Marcar el origen en el mapa"><svg class="ic"><use href="#i-pin"/></svg></button>
+            </div>
+            <div class="route-row" id="via-row" hidden>
+              <span class="route-mark via" aria-hidden="true"></span>
+              <label class="route-field"><small>Pasando por</small>
+                <input id="via" list="places" placeholder="Ej. Bucaramanga">
+              </label>
+              <button type="button" class="icon-btn pick" data-pick="via" title="Marcar la parada en el mapa" aria-label="Marcar la parada en el mapa"><svg class="ic"><use href="#i-pin"/></svg></button>
+            </div>
+            <div class="route-row">
+              <span class="route-mark end" aria-hidden="true"></span>
+              <label class="route-field"><small>Hasta</small>
+                <input id="dest" list="places" placeholder="Ciudad o dirección" required>
+              </label>
+              <button type="button" class="icon-btn pick" data-pick="dest" title="Marcar el destino en el mapa" aria-label="Marcar el destino en el mapa"><svg class="ic"><use href="#i-pin"/></svg></button>
+            </div>
           </div>
           <div class="row-actions">
-            <button type="button" class="btn link" id="add-via">+ Agregar parada intermedia</button>
-            <button type="button" class="btn link" id="swap">⇅ Invertir</button>
+            <button type="button" class="link-btn" id="add-via"><svg class="ic"><use href="#i-plus"/></svg> <span>Agregar una parada</span></button>
+            <button type="button" class="link-btn" id="swap"><svg class="ic"><use href="#i-swap"/></svg> Invertir</button>
           </div>
           <datalist id="places"></datalist>
-          <div class="grid2">
-            <label class="field"><span>Salida</span><input id="depart" type="datetime-local"></label>
-            <label class="field"><span>Batería al salir: <b id="start-soc-val">100%</b></span>
-              <input id="start-soc" type="range" min="10" max="100" step="5" value="100">
-            </label>
-          </div>
+          <label class="field"><span>¿Cuándo sales?</span><input id="depart" type="datetime-local"></label>
         </section>
 
-        <!-- 3. Preferencias -->
-        <details class="card">
-          <summary><h2><span class="step">3</span> Preferencias de carga</h2></summary>
-          <div class="grid2">
-            <label class="field"><span>Llegar a cada cargador con mín.: <b id="min-stop-val">10%</b></span>
-              <input id="min-stop" type="range" min="5" max="40" step="5" value="10"></label>
-            <label class="field"><span>Llegar al destino con mín.: <b id="min-arrive-val">15%</b></span>
-              <input id="min-arrive" type="range" min="5" max="60" step="5" value="15"></label>
-            <label class="field"><span>Cargar como máximo hasta: <b id="max-charge-val">80%</b></span>
-              <input id="max-charge" type="range" min="50" max="100" step="5" value="80"></label>
-            <label class="field"><span>Desvío máximo de la vía: <b id="detour-val">5 km</b></span>
-              <input id="detour" type="range" min="1" max="20" step="1" value="5"></label>
-          </div>
-          <label class="field"><span>Condiciones de manejo</span>
-            <select id="conditions">
-              <option value="1.0">Plano, velocidad moderada (×1,00)</option>
-              <option value="1.15" selected>Carretera colombiana típica: montaña y adelantos (×1,15)</option>
-              <option value="1.3">Mucha montaña, aire acondicionado o carro cargado (×1,30)</option>
-              <option value="1.45">Condiciones difíciles: lluvia, alta velocidad (×1,45)</option>
-            </select>
+        <!-- Carro -->
+        <section class="card">
+          <h2>Tu carro</h2>
+          <label class="field">
+            <span class="sr-only">Modelo</span>
+            <div class="select-wrap">
+              <svg class="ic" aria-hidden="true"><use href="#i-car"/></svg>
+              <select id="car-select"></select>
+            </div>
           </label>
-          <div class="grid2">
-            <label class="field"><span>Potencia mínima del cargador</span>
-              <select id="min-power">
-                <option value="0">Cualquiera</option>
-                <option value="7">≥ 7 kW</option>
-                <option value="22">≥ 22 kW</option>
-                <option value="40">Solo carga rápida (≥ 40 kW)</option>
-              </select></label>
-            <label class="field"><span>Tiempo extra por parada (min)</span><input id="overhead" type="number" min="0" max="60" value="5"></label>
-            <label class="field"><span>Precio kWh carga rápida (COP)</span><input id="price-dc" type="number" min="0" step="50" value="1800"></label>
-            <label class="field"><span>Precio kWh carga lenta (COP)</span><input id="price-ac" type="number" min="0" step="50" value="1000"></label>
+          <div id="car-range" class="car-stats"></div>
+          <div class="battery-field">
+            <label for="start-soc"><svg class="ic"><use href="#i-battery"/></svg> Batería al salir</label>
+            <b id="start-soc-val">100%</b>
+            <input id="start-soc" type="range" min="10" max="100" step="5" value="100">
           </div>
-          <label class="check"><input type="checkbox" id="include-ac" checked> Usar cargadores lentos (AC) si hace falta</label>
-          <label class="check"><input type="checkbox" id="include-unknown" checked> Incluir estaciones sin datos de conector (se asume carga lenta de 7 kW)</label>
+          <details class="sub-details">
+            <summary>Ajustar los datos del carro <svg class="ic chev"><use href="#i-chevron"/></svg></summary>
+            <p class="hint">Vienen llenos según el modelo y son aproximados. Si conoces los reales, cámbialos.</p>
+            <div class="grid2">
+              <label class="field"><span>Tamaño de batería (kWh)</span><input id="car-battery" type="number" min="5" max="250" step="0.1" required></label>
+              <label class="field"><span>Consumo (kWh/100 km)</span><input id="car-consumption" type="number" min="5" max="60" step="0.1" required></label>
+              <label class="field"><span>Carga lenta máx. AC (kW)</span><input id="car-ac" type="number" min="0" max="50" step="0.1" required></label>
+              <label class="field"><span>Carga rápida máx. DC (kW)</span><input id="car-dc" type="number" min="0" max="400" step="1" required></label>
+            </div>
+            <fieldset class="field">
+              <legend>Conectores que acepta</legend>
+              <div id="car-connectors" class="chips"></div>
+            </fieldset>
+          </details>
+        </section>
+
+        <!-- Preferencias -->
+        <details class="card accordion">
+          <summary>
+            <span class="acc-icon"><svg class="ic"><use href="#i-sliders"/></svg></span>
+            <span class="acc-text"><b>Preferencias de carga</b><small>Batería mínima, desvíos y precios</small></span>
+            <svg class="ic chev"><use href="#i-chevron"/></svg>
+          </summary>
+          <div class="acc-body">
+            <label class="field range-field"><span>Llegar a cada cargador con al menos <b id="min-stop-val">10%</b></span>
+              <input id="min-stop" type="range" min="5" max="40" step="5" value="10"></label>
+            <label class="field range-field"><span>Llegar al destino con al menos <b id="min-arrive-val">15%</b></span>
+              <input id="min-arrive" type="range" min="5" max="60" step="5" value="15"></label>
+            <label class="field range-field"><span>Cargar como máximo hasta <b id="max-charge-val">80%</b></span>
+              <input id="max-charge" type="range" min="50" max="100" step="5" value="80"></label>
+            <label class="field range-field"><span>Salirme de la vía hasta <b id="detour-val">5 km</b></span>
+              <input id="detour" type="range" min="1" max="20" step="1" value="5"></label>
+            <label class="field"><span>¿Cómo será la carretera?</span>
+              <select id="conditions">
+                <option value="1.0">Plana y a velocidad moderada</option>
+                <option value="1.15" selected>Normal en Colombia: montaña y adelantos</option>
+                <option value="1.3">Mucha montaña, aire encendido o carro lleno</option>
+                <option value="1.45">Difícil: lluvia o alta velocidad</option>
+              </select>
+            </label>
+            <div class="grid2">
+              <label class="field"><span>Tipo de cargador</span>
+                <select id="min-power">
+                  <option value="0">Cualquiera</option>
+                  <option value="7">Desde 7 kW</option>
+                  <option value="22">Desde 22 kW</option>
+                  <option value="40">Solo rápidos (40 kW o más)</option>
+                </select></label>
+              <label class="field"><span>Minutos extra por parada</span><input id="overhead" type="number" min="0" max="60" value="5"></label>
+              <label class="field"><span>Precio kWh rápida (COP)</span><input id="price-dc" type="number" min="0" step="50" value="1800"></label>
+              <label class="field"><span>Precio kWh lenta (COP)</span><input id="price-ac" type="number" min="0" step="50" value="1000"></label>
+            </div>
+            <label class="switch-row"><input type="checkbox" id="include-ac" class="switch" checked> Usar cargadores lentos si hace falta</label>
+            <label class="switch-row"><input type="checkbox" id="include-unknown" class="switch" checked> Incluir estaciones sin datos de conector (se asume carga lenta de 7 kW)</label>
+          </div>
         </details>
 
-        <!-- 4. Fuentes -->
-        <details class="card">
-          <summary><h2><span class="step">4</span> Fuentes de cargadores</h2></summary>
-          <p class="hint">Se usan los cargadores de <b>OpenStreetMap</b> automáticamente. Para tener muchos más datos,
-            crea una clave gratis en <a href="https://openchargemap.org/site/develop/api" target="_blank" rel="noopener">Open Charge Map</a> y pégala aquí.</p>
-          <label class="field"><span>Clave API de Open Charge Map (opcional)</span>
-            <input id="ocm-key" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></label>
-          <p class="hint" id="source-status">Aún no se han cargado los datos.</p>
-          <div class="row-actions">
-            <button type="button" class="btn small" id="add-charger">+ Agregar un cargador que conozco</button>
-            <button type="button" class="btn small ghost" id="reload-chargers">↻ Actualizar datos</button>
+        <!-- Fuentes -->
+        <details class="card accordion">
+          <summary>
+            <span class="acc-icon"><svg class="ic"><use href="#i-plug"/></svg></span>
+            <span class="acc-text"><b>Cargadores</b><small>Fuentes de datos y los que tú conoces</small></span>
+            <svg class="ic chev"><use href="#i-chevron"/></svg>
+          </summary>
+          <div class="acc-body">
+            <p class="hint" id="source-status">Se cargarán al planear tu primer viaje.</p>
+            <label class="field"><span>Clave de Open Charge Map (opcional)</span>
+              <input id="ocm-key" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></label>
+            <p class="hint">Agrega más estaciones y confirma conectores. <a href="https://openchargemap.org/site/develop/api" target="_blank" rel="noopener">Crea una clave gratis</a>. Se guarda solo en este navegador.</p>
+            <div class="row-actions wrap">
+              <button type="button" class="btn small" id="add-charger"><svg class="ic"><use href="#i-plus"/></svg> Agregar un cargador que conozco</button>
+              <button type="button" class="btn small ghost" id="reload-chargers"><svg class="ic"><use href="#i-refresh"/></svg> Actualizar datos</button>
+            </div>
+            <ul id="custom-list" class="mini-list"></ul>
           </div>
-          <ul id="custom-list" class="mini-list"></ul>
         </details>
 
-        <button type="submit" class="btn primary big" id="plan-btn">Planear viaje</button>
-        <p class="status" id="status" role="status" aria-live="polite"></p>
+        <section class="card" id="saved-card" hidden>
+          <h2>Viajes guardados</h2>
+          <ul id="saved-list" class="mini-list"></ul>
+        </section>
+
+        <div class="cta">
+          <p class="status" id="status" role="status" aria-live="polite"></p>
+          <button type="submit" class="btn primary big" id="plan-btn"><svg class="ic filled"><use href="#i-bolt"/></svg> <span>Planear mi viaje</span></button>
+        </div>
       </form>
 
       <!-- Resultados -->
       <section id="results" hidden>
-        <div id="route-tabs" class="tabs" role="tablist"></div>
-        <div id="summary" class="summary"></div>
+        <div class="result-head">
+          <button type="button" class="link-btn" id="back-btn"><svg class="ic"><use href="#i-back"/></svg> Cambiar viaje</button>
+          <h2 id="result-title"></h2>
+          <p id="result-car"></p>
+        </div>
+        <div id="route-tabs" class="tabs" role="tablist" aria-label="Rutas disponibles"></div>
+        <div id="summary"></div>
         <div id="warnings"></div>
         <div class="card chart-card">
           <h3>Batería durante el viaje</h3>
           <div id="soc-chart"></div>
         </div>
         <ol id="itinerary" class="timeline"></ol>
-        <div class="row-actions wrap">
-          <a class="btn" id="gmaps-link" target="_blank" rel="noopener">Abrir en Google Maps</a>
-          <button type="button" class="btn ghost" id="save-trip">Guardar viaje</button>
-          <button type="button" class="btn ghost" id="print-trip">Imprimir</button>
+        <div class="result-actions">
+          <a class="btn primary" id="gmaps-link" target="_blank" rel="noopener"><svg class="ic"><use href="#i-nav"/></svg> Abrir en Google Maps</a>
+          <button type="button" class="btn" id="save-trip"><svg class="ic"><use href="#i-save"/></svg> Guardar</button>
+          <button type="button" class="btn" id="print-trip"><svg class="ic"><use href="#i-print"/></svg> Imprimir</button>
         </div>
-      </section>
-
-      <section class="card" id="saved-card" hidden>
-        <h3>Viajes guardados</h3>
-        <ul id="saved-list" class="mini-list"></ul>
+        <p class="status" id="result-status" role="status" aria-live="polite"></p>
       </section>
 
       <footer class="foot">
-        <p>Los datos de cargadores provienen de fuentes abiertas y pueden estar desactualizados. Confirma
-          la disponibilidad en la app del operador (Terpel Voltex, Enel X, Celsia, EPM…) antes de salir.
-          Mapas © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>,
-          rutas <a href="https://project-osrm.org" target="_blank" rel="noopener">OSRM</a>.</p>
+        Datos abiertos que pueden estar desactualizados: confirma cada parada en la app del operador
+        (Terpel Voltex, Enel X, Celsia, EPM…) antes de salir. Mapas © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>,
+        rutas <a href="https://project-osrm.org" target="_blank" rel="noopener">OSRM</a>.
       </footer>
-    </aside>
+    </div>
+  </aside>
 
-    <section class="map-wrap">
-      <div id="map"></div>
-      <div class="map-legend">
-        <span><i class="dot stop"></i> Parada planeada</span>
-        <span><i class="dot ok"></i> Compatible</span>
-        <span><i class="dot no"></i> No compatible / lejos</span>
-        <label class="check"><input type="checkbox" id="show-all"> Ver todos los cargadores del país</label>
-      </div>
-      <div id="pick-banner" class="pick-banner" hidden>
-        <span id="pick-text">Haz clic en el mapa</span>
-        <button type="button" class="btn small ghost" id="pick-cancel">Cancelar</button>
-      </div>
-    </section>
-  </main>
+  <button id="toggle-panel" class="btn floating only-mobile" type="button"><svg class="ic"><use href="#i-map"/></svg> <span>Ver mapa</span></button>
 
   <!-- Formulario de cargador propio -->
   <dialog id="charger-dialog">
     <form method="dialog" id="charger-form">
-      <h3>Agregar cargador</h3>
+      <h3>Agregar un cargador</h3>
       <p class="hint" id="charger-coords"></p>
-      <label class="field"><span>Nombre</span><input id="cf-name" required placeholder="Ej. Hotel El Lago - Aguachica"></label>
+      <label class="field"><span>Nombre</span><input id="cf-name" required placeholder="Ej. Hotel El Lago, Aguachica"></label>
       <div class="grid2">
         <label class="field"><span>Potencia (kW)</span><input id="cf-kw" type="number" min="1" max="400" step="0.1" value="22" required></label>
         <label class="field"><span>Operador (opcional)</span><input id="cf-op"></label>

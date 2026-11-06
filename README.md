@@ -33,7 +33,7 @@ También puedes compartir enlaces que planean el viaje de una vez, por ejemplo:
 | Fuente | Notas |
 |---|---|
 | OpenStreetMap (Overpass) | Automática y gratuita. Incluye una copia de respaldo (`js/osm-snapshot.js`). Muchas estaciones no tienen datos de conector. |
-| Open Charge Map | Opcional. Crea una clave gratis en openchargemap.org y pégala en el paso 4. |
+| Open Charge Map | Opcional. Crea una clave gratis en openchargemap.org y pégala en la sección "Cargadores". |
 | Cargadores propios | Los que agregues tú. |
 | OSRM / Nominatim | Rutas y búsqueda de lugares (servidores públicos gratuitos). |
 
